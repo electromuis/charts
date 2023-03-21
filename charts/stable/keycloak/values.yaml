@@ -1,0 +1,101 @@
+image:
+  repository: quay.io/keycloak/keycloak
+  pullPolicy: IfNotPresent
+  tag: 21.0@sha256:057e1264cae9adbd9be65235d0c837087b0accc183275803b7da81b1b7a2a94c
+
+securityContext:
+  readOnlyRootFilesystem: false
+  runAsNonRoot: false
+
+podSecurityContext:
+  runAsUser: 0
+  runAsGroup: 0
+  fsGroup: 33
+
+service:
+  main:
+    ports:
+      main:
+        port: 10021
+        targetPort: 8080
+
+hostAliases:
+  - ip: '{{ .Values.env.AccessIP | default "127.0.0.1" }}'
+    hostnames:
+      - "{{ if .Values.ingress.main.enabled }}{{ with (first .Values.ingress.main.hosts) }}{{ .host }}{{ end }}{{ else }}placeholder.fakedomain.dns{{ end }}"
+
+secretEnv:
+  KEYCLOAK_ADMIN: "admin"
+  KEYCLOAK_ADMIN_PASSWORD: "admin"
+
+probes:
+  liveness:
+    custom: true
+    spec:
+      initialDelaySeconds: 25
+      httpGet:
+        path: /
+        port: 8080
+        httpHeaders:
+          - name: Host
+            value: "test.fakedomain.dns"
+
+  readiness:
+    custom: true
+    spec:
+      initialDelaySeconds: 25
+      httpGet:
+        path: /
+        port: 8080
+        httpHeaders:
+          - name: Host
+            value: "test.fakedomain.dns"
+
+  startup:
+    custom: true
+    spec:
+      initialDelaySeconds: 25
+      httpGet:
+        path: /
+        port: 8080
+        httpHeaders:
+          - name: Host
+            value: "test.fakedomain.dns"
+
+initContainers:
+  prestart:
+    image: "{{ .Values.alpineImage.repository }}:{{ .Values.alpineImage.tag }}"
+    securityContext:
+      runAsUser: 0
+      runAsGroup: 0
+
+env:
+  # IP used for exposing nextcloud
+  # Often the service or nodePort IP
+  # Defaults to the main serviceName for CI purposes.
+  AccessIP:
+  TRUSTED_PROXIES: "172.16.0.0/16 127.0.0.1"
+  POSTGRES_DB: "{{ .Values.postgresql.postgresqlDatabase }}"
+  POSTGRES_USER: "{{ .Values.postgresql.postgresqlUsername }}"
+  NC_check_data_directory_permissions: "true"
+  POSTGRES_PASSWORD:
+    secretKeyRef:
+      name: dbcreds
+      key: postgresql-password
+  POSTGRES_HOST:
+    secretKeyRef:
+      name: dbcreds
+      key: plainporthost
+
+envFrom:
+  - configMapRef:
+      name: keycloakcloudconfig
+
+postgresql:
+  enabled: true
+  existingSecret: "dbcreds"
+  postgresqlUsername: keycloak
+  postgresqlDatabase: keycloak
+
+portal:
+  enabled: true
